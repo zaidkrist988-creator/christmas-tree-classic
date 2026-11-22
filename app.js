@@ -1,8 +1,4 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import { EffectComposer } from './vendor/postprocessing/EffectComposer.js';
-import { RenderPass } from './vendor/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from './vendor/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from './vendor/postprocessing/OutputPass.js';
 
 /* ============================================================================
    ① 配置区：改树、改文字，基本只动这里
@@ -18,7 +14,7 @@ const CONFIG = {
   tree: {
     height:   14,       // 树高（相机距离按这个来）
     radius:   6.3,      // 底部半径，越大越"胖"
-    count:    9000,     // 光点数：越大越"细密"，手机端会自动打折
+    count:    3600,     // 粒子数：400 轻 / 1300 标准 / 3600 密
     spin:     0.0016,   // 自转速度
     surface:  0.80,     // 粒子贴树面的程度：0.7 实心，0.95 空心
     thickness:0.30,     // 树面随机厚度（越厚越蓬）
@@ -83,7 +79,7 @@ function pickPixelRatio() {
 renderer.setPixelRatio(pickPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.28;
+renderer.toneMappingExposure = 1.38;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
@@ -93,18 +89,6 @@ scene.fog = new THREE.FogExp2('#04060b', 0.010);
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.position.set(0, 3.4, 27);
 camera.lookAt(0, 1.2, 0);
-
-/* 后处理：泛光（把亮部溢成一层柔光，参考视频那种电影感就靠它） */
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(window.innerWidth, window.innerHeight),
-  isMobile ? 0.38 : 0.45,   // strength：只给一点柔光，不要糊成一片
-  0.30,                     // radius
-  0.90                      // threshold：只有最亮的灯点才溢光
-);
-composer.addPass(bloomPass);
-composer.addPass(new OutputPass());
 
 scene.add(new THREE.AmbientLight(0xffe9c2, 1.30));
 const keyLight = new THREE.DirectionalLight(0xfff4dc, 1.55);
@@ -126,12 +110,12 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = -CONFIG.tree.height / 2 - 0.9;
 scene.add(ground);
 
-/* 地面光池：树底下那圈发亮的雪地，礼盒落在上面 */
+/* 地面光晕：让礼盒有"落地"的实感 */
 const floorGlow = new THREE.Mesh(
-  new THREE.PlaneGeometry(46, 34),
+  new THREE.PlaneGeometry(34, 34),
   new THREE.MeshBasicMaterial({
-    map: makeGlowTexture(), color: 0xffffff, transparent: true,
-    opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
+    map: makeGlowTexture(), color: 0xc8a45a, transparent: true,
+    opacity: 0.26, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false
   })
 );
 floorGlow.rotation.x = -Math.PI / 2;
@@ -142,8 +126,7 @@ scene.add(floorGlow);
    ④ 粒子树
    ========================================================================== */
 const T = CONFIG.tree;
-/* 光点要"细而密"：手机少一点保帧率，桌面拉满 */
-const N = isMobile ? Math.round(T.count * 0.5) : T.count;
+const N = T.count;
 
 const treePos    = new Float32Array(N * 3);   // 树上坐标
 const scatterPos = new Float32Array(N * 3);   // 散开坐标
@@ -204,7 +187,7 @@ for (let i = 0; i < N; i++) {
   col.multiplyScalar(0.95 + Math.random() * 0.42);
   aColor[i3] = col.r; aColor[i3 + 1] = col.g; aColor[i3 + 2] = col.b;
 
-  aSize[i] = 0.14 + Math.random() * 0.26 + (Math.random() > 0.9 ? 0.34 : 0);
+  aSize[i] = 0.32 + Math.random() * 0.56 + (Math.random() > 0.88 ? 0.68 : 0);
 }
 
 const treeGeo = new THREE.BufferGeometry();
@@ -252,7 +235,7 @@ const treeMat = new THREE.ShaderMaterial({
       if (d > 0.5) discard;
       float a = smoothstep(0.5, 0.0, d);
       a = pow(a, 1.7);
-      vec3 c = vColor * (1.05 + vGlow * 0.50);
+      vec3 c = vColor * (1.44 + vGlow * 0.74);
       gl_FragColor = vec4(c, a);
     }
   `,
@@ -304,37 +287,20 @@ scene.add(treeGlow);
 
 const starGroup = new THREE.Group();
 starGroup.position.y = H / 2 + 0.55;
-
-/* 树顶换成一枚真的五角星（薄片挤出，正面朝镜头），带光晕 */
-function starShape(outer, inner) {
-  const s = new THREE.Shape();
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? outer : inner;
-    const a = (Math.PI / 5) * i - Math.PI / 2;
-    const x = Math.cos(a) * r, y = Math.sin(a) * r;
-    if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
-  }
-  s.closePath();
-  return s;
-}
-const starGeo = new THREE.ExtrudeGeometry(starShape(0.66, 0.28), {
-  depth: 0.14, bevelEnabled: true, bevelSize: 0.025, bevelThickness: 0.025, bevelSegments: 1, curveSegments: 2
-});
-starGeo.center();
 const starCore = new THREE.Mesh(
-  starGeo,
-  new THREE.MeshBasicMaterial({ color: 0xfff6d4, toneMapped: false })
+  new THREE.OctahedronGeometry(0.38, 0),
+  new THREE.MeshBasicMaterial({ color: 0xfff8d2, toneMapped: false })
 );
 const starHalo = new THREE.Sprite(new THREE.SpriteMaterial({
   map: makeGlowTexture(),
-  color: 0xfff0cf,
+  color: 0xffffff,
   transparent: true,
   blending: THREE.AdditiveBlending,
   depthWrite: false,
   toneMapped: false,
-  opacity: 0.9
+  opacity: 1.0
 }));
-starHalo.scale.set(3.8, 3.8, 1);
+starHalo.scale.set(5.2, 5.2, 1);
 starGroup.add(starCore, starHalo);
 treeGroup.add(starGroup);
 
@@ -915,7 +881,6 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setPixelRatio(pickPixelRatio());
   renderer.setSize(window.innerWidth, window.innerHeight);
-  composer.setSize(window.innerWidth, window.innerHeight);
   treeMat.uniforms.uScale.value = renderer.getPixelRatio();
   overlay.width = overlay.clientWidth * Math.min(window.devicePixelRatio, 2);
   overlay.height = overlay.clientHeight * Math.min(window.devicePixelRatio, 2);
@@ -1036,10 +1001,9 @@ function renderFrame() {
   }
 
   /* 树顶星 */
-  starGroup.rotation.y += 0.004;
-  starCore.quaternion.copy(camera.quaternion);   // 星星始终正对镜头，不侧翻
-  starCore.material.color.setHSL(0.128, 0.62, 0.86 + pulse * 0.08);
-  const halo = 3.6 + pulse * 1.7;
+  starGroup.rotation.y += 0.01;
+  starCore.material.color.setHSL(0.125, 0.72, 0.80 + pulse * 0.10);
+  const halo = 5.2 + pulse * 2.2;
   starHalo.scale.set(halo, halo, 1);
 
   /* 灯光呼吸 */
@@ -1064,14 +1028,13 @@ function renderFrame() {
       if (perfSum / perfTick > 0.024 && renderer.getPixelRatio() > 1.5) {
         renderer.setPixelRatio(1.5);
         renderer.setSize(window.innerWidth, window.innerHeight);
-        composer.setSize(window.innerWidth, window.innerHeight);
         treeMat.uniforms.uScale.value = 1.5;
       }
       perfDone = true;
     }
   }
 
-  composer.render();
+  renderer.render(scene, camera);
 }
 
 /* ============================================================================
