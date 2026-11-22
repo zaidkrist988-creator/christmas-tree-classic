@@ -1,4 +1,4 @@
-import * as THREE from './vendor/three/three.module.js';
+import * as THREE from './vendor/three/three.module.min.js';
 
 /* ============================================================================
    ① 配置区：改树、改文字，基本只动这里
@@ -65,8 +65,18 @@ document.title = CONFIG.text.title;
    ③ Three.js 场景
    ========================================================================== */
 const canvas = $('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: new URLSearchParams(location.search).has('shot') });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const isMobile = window.matchMedia('(max-width: 820px)').matches;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isMobile, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: new URLSearchParams(location.search).has('shot') });
+/* 分辨率按"看得清"给，不按"拉满"给：手机 1.5 倍、桌面 1.75 倍，再按总像素封顶 */
+function pickPixelRatio() {
+  const dpr = window.devicePixelRatio || 1;
+  const cap = isMobile ? 1.5 : 1.75;
+  const maxPixels = isMobile ? 1300000 : 2400000;
+  let p = Math.min(dpr, cap);
+  while (p > 1 && window.innerWidth * window.innerHeight * p * p > maxPixels) p -= 0.25;
+  return Math.max(1, p);
+}
+renderer.setPixelRatio(pickPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
@@ -177,7 +187,9 @@ for (let i = 0; i < N; i++) {
 }
 
 const treeGeo = new THREE.BufferGeometry();
-treeGeo.setAttribute('position', new THREE.BufferAttribute(curPos, 3).setUsage(THREE.DynamicDrawUsage));
+// 位置常驻显存：树上位置 + 散开位置各一份，靠 uMix 在 shader 里插值，CPU 每帧不再改 buffer
+treeGeo.setAttribute('position', new THREE.BufferAttribute(treePos, 3));
+treeGeo.setAttribute('aScatter', new THREE.BufferAttribute(scatterPos, 3));
 treeGeo.setAttribute('aColor', new THREE.BufferAttribute(aColor, 3));
 treeGeo.setAttribute('aSize', new THREE.BufferAttribute(aSize, 1));
 
@@ -185,19 +197,22 @@ const treeMat = new THREE.ShaderMaterial({
   uniforms: {
     uTime:   { value: 0 },
     uAudio:  { value: 0 },
-    uScale:  { value: Math.min(window.devicePixelRatio, 2) }
+    uScale:  { value: renderer.getPixelRatio() },
+    uMix:    { value: 0 }
   },
   vertexShader: /* glsl */`
     attribute vec3 aColor;
     attribute float aSize;
+    attribute vec3 aScatter;
     uniform float uTime;
     uniform float uAudio;
     uniform float uScale;
+    uniform float uMix;
     varying vec3 vColor;
     varying float vGlow;
     void main() {
       vColor = aColor;
-      vec3 p = position;
+      vec3 p = mix(position, aScatter, uMix);
       // 轻微呼吸，避免"死"粒子
       p.y += sin(uTime * 1.1 + p.x * 1.8 + p.z * 1.8) * 0.035;
       p.xz *= 1.0 + uAudio * 0.045;
@@ -225,6 +240,7 @@ const treeMat = new THREE.ShaderMaterial({
   depthWrite: false
 });
 
+let treeMix = 0;   // 0 = 成树，1 = 散开（GPU 插值进度）
 const treePoints = new THREE.Points(treeGeo, treeMat);
 treePoints.frustumCulled = false;
 
@@ -844,7 +860,11 @@ $('fileMusic').addEventListener('change', async e => {
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(pickPixelRatio());
   renderer.setSize(window.innerWidth, window.innerHeight);
+  treeMat.uniforms.uScale.value = renderer.getPixelRatio();
+  overlay.width = overlay.clientWidth * Math.min(window.devicePixelRatio, 2);
+  overlay.height = overlay.clientHeight * Math.min(window.devicePixelRatio, 2);
 });
 
 /* ============================================================================
@@ -884,18 +904,12 @@ function renderFrame() {
   audioLevel += (target - audioLevel) * 0.12;
   const pulse = audioLevel > 0.02 ? audioLevel : 0.28 + 0.12 * Math.sin(t * 1.5);
 
-  /* 粒子 */
+  /* 粒子：形变交给 GPU，这里只推一个 0→1 的进度值，调用从 3N 次降到 1 次 */
   const lerpK = sceneState === 'SPREAD' ? 0.045 : 0.06;
-  for (let i = 0; i < N; i++) {
-    const i3 = i * 3;
-    const tx = sceneState === 'SPREAD' ? scatterPos[i3] : treePos[i3];
-    const ty = sceneState === 'SPREAD' ? scatterPos[i3 + 1] : treePos[i3 + 1];
-    const tz = sceneState === 'SPREAD' ? scatterPos[i3 + 2] : treePos[i3 + 2];
-    curPos[i3]     += (tx - curPos[i3]) * lerpK;
-    curPos[i3 + 1] += (ty - curPos[i3 + 1]) * lerpK;
-    curPos[i3 + 2] += (tz - curPos[i3 + 2]) * lerpK;
-  }
-  treeGeo.attributes.position.needsUpdate = true;
+  const targetMix = sceneState === 'SPREAD' ? 1 : 0;
+  treeMix += (targetMix - treeMix) * lerpK;
+  if (Math.abs(targetMix - treeMix) < 0.0004) treeMix = targetMix;
+  treeMat.uniforms.uMix.value = treeMix;
   treeMat.uniforms.uTime.value = t;
   treeMat.uniforms.uAudio.value = pulse;
   treeGroup.rotation.y += T.spin;
@@ -994,30 +1008,32 @@ function renderFrame() {
    ⑮ 启动
    ========================================================================== */
 (async function boot() {
-  // 恢复缓存里的照片
+  overlay.width = overlay.clientWidth * Math.min(window.devicePixelRatio, 2);
+  overlay.height = overlay.clientHeight * Math.min(window.devicePixelRatio, 2);
+
+  animate();            // 第一帧立刻出树，不等照片和后端
+  const bootEl = $('boot');
+  bootEl.textContent = '树已就绪 · 点「开启手势」再用摄像头';
+  setTimeout(() => bootEl.classList.add('hide'), 2200);
+
+  // 照片恢复放后台，不再挡首帧
   try {
     const saved = await dbAll();
-    let i = 0;
+    const ready = [];
     for (const rec of saved) {
-      if (!rec.blob || i >= CONFIG.photo.max) continue;
+      if (!rec.blob || ready.length >= CONFIG.photo.max) continue;
       const url = URL.createObjectURL(rec.blob);
       const img = new Image();
       img.src = url;
-      await img.decode();
-      const item = addPhotoToScene(rec.id, img);
-      item.preview = url;
-      i++;
+      ready.push({ rec, url, img });
+    }
+    await Promise.all(ready.map(r => r.img.decode().catch(() => null)));
+    for (const r of ready) {
+      const item = addPhotoToScene(r.rec.id, r.img);
+      item.preview = r.url;
     }
     renderThumbs();
   } catch (e) {
     console.warn('photo restore skipped', e);
   }
-
-  overlay.width = overlay.clientWidth * Math.min(window.devicePixelRatio, 2);
-  overlay.height = overlay.clientHeight * Math.min(window.devicePixelRatio, 2);
-
-  animate();            // 先只加载树，手势引擎等用户真正要用时再下
-  const bootEl = $('boot');
-  bootEl.textContent = '树已就绪 · 点「开启手势」再用摄像头';
-  setTimeout(() => bootEl.classList.add('hide'), 2200);
 })();
