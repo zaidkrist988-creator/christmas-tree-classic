@@ -1,5 +1,4 @@
 import * as THREE from './vendor/three/three.module.js';
-import { FilesetResolver, HandLandmarker } from './vendor/mediapipe/vision_bundle.mjs';
 
 /* ============================================================================
    ① 配置区：改树、改文字，基本只动这里
@@ -624,7 +623,9 @@ function drawSkeleton(lm) {
 
 async function initHandEngine() {
   const boot = $('boot');
+  boot.textContent = '手势引擎后台加载中（不影响看树）';
   try {
+    const { FilesetResolver, HandLandmarker } = await import('./vendor/mediapipe/vision_bundle.mjs');
     const fileset = await FilesetResolver.forVisionTasks('./vendor/mediapipe/wasm');
     const opts = {
       baseOptions: { modelAssetPath: './vendor/models/hand_landmarker.task', delegate: 'GPU' },
@@ -650,7 +651,7 @@ async function initHandEngine() {
 
 async function startCamera() {
   if (!handLandmarker) {
-    toast('手势引擎还没加载完');
+    toast('手势引擎还在后台加载，等十几秒再点一次');
     return false;
   }
   try {
@@ -984,6 +985,6 @@ function renderFrame() {
   overlay.width = overlay.clientWidth * Math.min(window.devicePixelRatio, 2);
   overlay.height = overlay.clientHeight * Math.min(window.devicePixelRatio, 2);
 
-  await initHandEngine();
-  animate();
+  animate();            // 先把树画出来，不用等手势引擎
+  initHandEngine();     // 手势引擎在后台慢慢加载，不挡首屏
 })();

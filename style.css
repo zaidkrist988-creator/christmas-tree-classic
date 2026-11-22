@@ -98,10 +98,10 @@ button.ghost{background:transparent}
   pointer-events:none;white-space:nowrap;padding:6px 18px;border-radius:999px;background:rgba(8,20,14,.5);
 }
 #boot{
-  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
-  z-index:8;padding:12px 20px;border-radius:8px;
-  background:rgba(8,24,14,.8);border:1px solid rgba(255,205,120,.2);
-  font-family:ui-monospace,monospace;font-size:11.5px;letter-spacing:.18em;color:#ffd98a;
+  position:fixed;left:50%;bottom:clamp(54px,7vh,88px);transform:translateX(-50%);
+  z-index:8;padding:8px 16px;border-radius:999px;
+  background:rgba(8,24,14,.72);border:1px solid rgba(255,205,120,.2);
+  font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.14em;color:#ffd98a;
   transition:opacity .5s;
 }
 #boot.hide{opacity:0;pointer-events:none}
