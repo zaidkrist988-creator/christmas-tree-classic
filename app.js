@@ -664,8 +664,24 @@ async function startCamera() {
     $('camState').textContent = 'TRACKING';
     return true;
   } catch (e) {
-    $('camState').textContent = 'NO CAMERA';
-    toast('摄像头打不开：需要 HTTPS 或 localhost，并允许权限');
+    const name = (e && e.name) || 'UnknownError';
+    console.warn('getUserMedia failed:', name, e && e.message);
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+      $('camState').textContent = 'BLOCKED';
+      toast('摄像头被拦了：点地址栏左边的小图标，把「摄像头」改成允许，然后刷新');
+    } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      $('camState').textContent = 'NO CAMERA';
+      toast('系统没检测到摄像头设备');
+    } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+      $('camState').textContent = 'BUSY';
+      toast('摄像头被别的程序占着（会议/微信视频/相机预览），关掉再试');
+    } else if (name === 'OverconstrainedError') {
+      $('camState').textContent = 'NO CAMERA';
+      toast('摄像头不支持这个分辨率，换一个摄像头试试');
+    } else {
+      $('camState').textContent = 'NO CAMERA';
+      toast('摄像头打不开：' + name + '（需要 https 或 localhost）');
+    }
     return false;
   }
 }
@@ -763,6 +779,10 @@ $('btnHand').addEventListener('click', async () => {
     btn.textContent = '开启手势';
     $('camState').textContent = 'PAUSED';
     octx.clearRect(0, 0, overlay.width, overlay.height);
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('浏览器不给用摄像头：需要用 https 或 localhost 打开，现在这个地址不行');
     return;
   }
   const ok = await startCamera();
