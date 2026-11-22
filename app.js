@@ -621,9 +621,12 @@ function drawSkeleton(lm) {
   }
 }
 
+let handLoading = false;
 async function initHandEngine() {
   const boot = $('boot');
-  boot.textContent = '手势引擎后台加载中（不影响看树）';
+  if (handLandmarker || handLoading) return;
+  handLoading = true;
+  boot.textContent = '手势引擎加载中…（首次要下十几 MB）';
   try {
     const { FilesetResolver, HandLandmarker } = await import('./vendor/mediapipe/vision_bundle.mjs');
     const fileset = await FilesetResolver.forVisionTasks('./vendor/mediapipe/wasm');
@@ -644,15 +647,23 @@ async function initHandEngine() {
     boot.textContent = '手势引擎就绪 · 点「开启手势」';
     setTimeout(() => boot.classList.add('hide'), 1600);
   } catch (e) {
-    boot.textContent = '手势引擎加载失败（检查 vendor/mediapipe）';
+    boot.textContent = '手势引擎加载失败（检查网络或 vendor/mediapipe）';
     console.error(e);
   }
+  handLoading = false;
 }
 
 async function startCamera() {
   if (!handLandmarker) {
-    toast('手势引擎还在后台加载，等十几秒再点一次');
-    return false;
+    if (handLoading) { toast('手势引擎正在下载，等它好了再点一次'); return false; }
+    toast('正在下载手势引擎（约 17MB，网慢可能要几十秒）');
+    const bootEl = $('boot');
+    bootEl.classList.remove('hide');
+    await initHandEngine();
+    if (!handLandmarker) {
+      bootEl.textContent = '手势引擎下载失败，看看网络再试';
+      return false;
+    }
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -1005,6 +1016,8 @@ function renderFrame() {
   overlay.width = overlay.clientWidth * Math.min(window.devicePixelRatio, 2);
   overlay.height = overlay.clientHeight * Math.min(window.devicePixelRatio, 2);
 
-  animate();            // 先把树画出来，不用等手势引擎
-  initHandEngine();     // 手势引擎在后台慢慢加载，不挡首屏
+  animate();            // 先只加载树，手势引擎等用户真正要用时再下
+  const bootEl = $('boot');
+  bootEl.textContent = '树已就绪 · 点「开启手势」再用摄像头';
+  setTimeout(() => bootEl.classList.add('hide'), 2200);
 })();
