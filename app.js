@@ -13,21 +13,21 @@ const CONFIG = {
 
   tree: {
     height:   14,       // 树高（相机距离按这个来）
-    radius:   5.4,      // 底部半径，越大越"胖"
-    count:    1300,     // 粒子数：400 轻 / 1300 标准 / 2600 密
+    radius:   6.3,      // 底部半径，越大越"胖"
+    count:    3600,     // 粒子数：400 轻 / 1300 标准 / 3600 密
     spin:     0.0016,   // 自转速度
-    surface:  0.90,     // 粒子贴树面的程度：0.7 实心，0.95 空心
-    thickness:0.20,     // 树面随机厚度
-    colors: {           // 配色（改成金红系就换这四个值）
-      core:   '#f4ffe6',
-      edge:   '#1ab05a',
-      accent: '#ffc93c',
-      warm:   '#ff4d3d'
+    surface:  0.80,     // 粒子贴树面的程度：0.7 实心，0.95 空心
+    thickness:0.30,     // 树面随机厚度（越厚越蓬）
+    colors: {           // 金主，绿红为辅
+      core:   '#fffdf0',
+      edge:   '#1c8f4a',
+      accent: '#ffd036',
+      warm:   '#ff4632'
     },
-    mix: { warm: 0.07, accent: 0.20 }   // 暖色 / 紫色粒子占比
+    mix: { warm: 0.06, accent: 0.58, green: 0.20 }   // 红 / 金 / 绿 占比，剩下的是暖白
   },
 
-  lamps:  { count: 160, size: 0.16, spiral: 7 },
+  lamps:  { count: 260, size: 0.22, spiral: 7 },
   gifts:  { count: 22, ringMin: 6.4, ringMax: 9.8 },
   snow:   { count: 900, radius: 22, top: 22, bottom: -9, speed: 0.55 },
   photo:  { max: 6, orbitRadius: 8.2, focusZ: 14.5 },
@@ -66,12 +66,12 @@ document.title = CONFIG.text.title;
    ========================================================================== */
 const canvas = $('scene');
 const isMobile = window.matchMedia('(max-width: 820px)').matches;
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isMobile, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: new URLSearchParams(location.search).has('shot') });
-/* 分辨率按"看得清"给，不按"拉满"给：手机 1.5 倍、桌面 1.75 倍，再按总像素封顶 */
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: new URLSearchParams(location.search).has('shot') });
+/* 分辨率尽量贴近屏幕：手机和桌面都给到 2 倍，按总像素封顶，再由下面的帧率保护兜底 */
 function pickPixelRatio() {
   const dpr = window.devicePixelRatio || 1;
-  const cap = isMobile ? 1.5 : 1.75;
-  const maxPixels = isMobile ? 1300000 : 2400000;
+  const cap = 2;
+  const maxPixels = isMobile ? 2600000 : 5000000;
   let p = Math.min(dpr, cap);
   while (p > 1 && window.innerWidth * window.innerHeight * p * p > maxPixels) p -= 0.25;
   return Math.max(1, p);
@@ -79,19 +79,19 @@ function pickPixelRatio() {
 renderer.setPixelRatio(pickPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = 1.38;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#04060b');
-scene.fog = new THREE.FogExp2('#04060b', 0.019);
+scene.fog = new THREE.FogExp2('#04060b', 0.010);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.position.set(0, 3.4, 27);
 camera.lookAt(0, 1.2, 0);
 
-scene.add(new THREE.AmbientLight(0x9fc9a8, 1.15));
-const keyLight = new THREE.DirectionalLight(0xfff4dc, 1.4);
+scene.add(new THREE.AmbientLight(0xffe9c2, 1.30));
+const keyLight = new THREE.DirectionalLight(0xfff4dc, 1.55);
 keyLight.position.set(8, 14, 10);
 scene.add(keyLight);
 const baseLight = new THREE.PointLight(0xffe2b0, 22, 40, 2);
@@ -151,10 +151,13 @@ for (let i = 0; i < N; i++) {
   const t = (layer + 0.12 + Math.random() * 0.76) / LAYERS;   // 0 底 → 1 顶
   const y = -H / 2 + t * H;
 
-  // 圆锥撒点：半径随高度收缩，再贴到树面附近，留随机厚度
+  // 圆锥撒点：大部分贴树面（轮廓清楚），一小撮落在体内（让树有体积、更饱满）
   const ang = Math.random() * Math.PI * 2;
   const tier = 1 + 0.09 * Math.sin(t * Math.PI * 9 + ang * 1.8);   // 分层起伏
-  const rad = (1 - t) * R * tier * (T.surface + Math.random() * T.thickness);
+  const shell = Math.random() < 0.15
+    ? 0.30 + Math.random() * 0.55                                  // 体内填充
+    : T.surface + Math.random() * T.thickness;
+  const rad = (1 - t) * R * tier * shell;
   const droop = Math.cos(ang * 3) * 0.24 * (1 - t);         // 枝头下垂，避免完美圆锥
 
   treePos[i3]     = Math.cos(ang) * rad;
@@ -173,17 +176,18 @@ for (let i = 0; i < N; i++) {
   curPos[i3 + 1] = treePos[i3 + 1];
   curPos[i3 + 2] = treePos[i3 + 2];
 
-  // 颜色分配
+  // 颜色分配：金为主，绿红为辅，其余暖白压亮
   const pick = Math.random();
-  const col = pick < T.mix.warm
-    ? C.warm.clone()
-    : pick < T.mix.warm + T.mix.accent
-      ? C.accent.clone()
-      : C.edge.clone().lerp(C.core, Math.random() * 0.65);
-  col.multiplyScalar(0.72 + Math.random() * 0.5);
+  const cW = T.mix.warm, cA = T.mix.accent, cG = T.mix.green;
+  let col;
+  if (pick < cW) col = C.warm.clone();
+  else if (pick < cW + cA) col = C.accent.clone();
+  else if (pick < cW + cA + cG) col = C.edge.clone().lerp(C.core, Math.random() * 0.10);
+  else col = C.core.clone();
+  col.multiplyScalar(0.95 + Math.random() * 0.42);
   aColor[i3] = col.r; aColor[i3 + 1] = col.g; aColor[i3 + 2] = col.b;
 
-  aSize[i] = 0.2 + Math.random() * 0.42 + (Math.random() > 0.92 ? 0.5 : 0);
+  aSize[i] = 0.32 + Math.random() * 0.56 + (Math.random() > 0.88 ? 0.68 : 0);
 }
 
 const treeGeo = new THREE.BufferGeometry();
@@ -218,9 +222,9 @@ const treeMat = new THREE.ShaderMaterial({
       p.xz *= 1.0 + uAudio * 0.045;
       vec4 mv = modelViewMatrix * vec4(p, 1.0);
       float s = aSize * (1.0 + uAudio * 0.85);
-      gl_PointSize = s * uScale * (300.0 / -mv.z);
+      gl_PointSize = s * uScale * (355.0 / -mv.z);
       gl_Position = projectionMatrix * mv;
-      vGlow = 0.55 + 0.45 * sin(uTime * 2.2 + p.y * 1.4 + p.x * 0.6);
+      vGlow = 0.30 + 0.80 * sin(uTime * 3.2 + p.y * 1.4 + p.x * 0.6);
     }
   `,
   fragmentShader: /* glsl */`
@@ -231,7 +235,7 @@ const treeMat = new THREE.ShaderMaterial({
       if (d > 0.5) discard;
       float a = smoothstep(0.5, 0.0, d);
       a = pow(a, 1.7);
-      vec3 c = vColor * (1.02 + vGlow * 0.42);
+      vec3 c = vColor * (1.44 + vGlow * 0.74);
       gl_FragColor = vec4(c, a);
     }
   `,
@@ -266,6 +270,21 @@ function makeGlowTexture() {
   return tex;
 }
 
+/* 树体柔光：整棵树外面裹一层金光，提亮也提"分量"，不遮粒子细节 */
+const treeGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: makeGlowTexture(),
+  color: 0xffd777,
+  transparent: true,
+  opacity: 0.18,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  toneMapped: false
+}));
+treeGlow.position.set(0, 0.2, -1.0);
+treeGlow.scale.set(11.8, 16.6, 1);
+treeGlow.renderOrder = -1;
+scene.add(treeGlow);
+
 const starGroup = new THREE.Group();
 starGroup.position.y = H / 2 + 0.55;
 const starCore = new THREE.Mesh(
@@ -299,7 +318,7 @@ lampMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 treeGroup.add(lampMesh);
 
 const lampData = [];
-const lampPalette = ['#ffcc3d', '#ff4d4d', '#fff6dc', '#3ddc84', '#ffab3d'];
+const lampPalette = ['#ffd447', '#ffc02a', '#ffe98f', '#fff6d6', '#ff9f1c', '#ffd447', '#31c46b', '#ff4d4d'];
 const dummy = new THREE.Object3D();
 for (let i = 0; i < lampCount; i++) {
   const t = 0.06 + (i / lampCount) * 0.9;
@@ -343,7 +362,7 @@ ribbonMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 scene.add(ribbonMesh);
 
 const giftData = [];
-const giftPalette = ['#e5332e', '#31c46b', '#e8b93a', '#fff7ea', '#c0181c'];
+const giftPalette = ['#e5332e', '#e8b93a', '#31c46b', '#ffcf4a', '#c0181c', '#fff7ea'];
 for (let i = 0; i < giftCount; i++) {
   const ang = (i / giftCount) * Math.PI * 2 + Math.random() * 0.3;
   const rad = CONFIG.gifts.ringMin + Math.random() * (CONFIG.gifts.ringMax - CONFIG.gifts.ringMin);
@@ -872,6 +891,7 @@ window.addEventListener('resize', () => {
    ========================================================================== */
 const clock = new THREE.Clock();
 const pointer = { x: 0, y: 0 };
+let perfTick = 0, perfSum = 0, perfDone = false;
 window.addEventListener('pointermove', e => {
   pointer.x = e.clientX / window.innerWidth - 0.5;
   pointer.y = e.clientY / window.innerHeight - 0.5;
@@ -917,9 +937,9 @@ function renderFrame() {
   /* 灯带闪烁 */
   for (let i = 0; i < lampCount; i++) {
     const d = lampData[i];
-    const fl = 0.55 + 0.45 * Math.sin(t * 2.4 + d.phase) + pulse * 0.55;
+    const fl = 0.30 + 0.90 * Math.sin(t * 3.9 + d.phase) + pulse * 0.65;
     dummy.position.set(d.x, d.y, d.z);
-    dummy.scale.setScalar(clamp(fl, 0.5, 1.9));
+    dummy.scale.setScalar(clamp(fl, 0.42, 2.45));
     dummy.updateMatrix();
     lampMesh.setMatrixAt(i, dummy.matrix);
   }
@@ -983,12 +1003,12 @@ function renderFrame() {
   /* 树顶星 */
   starGroup.rotation.y += 0.01;
   starCore.material.color.setHSL(0.125, 0.72, 0.80 + pulse * 0.10);
-  const halo = 5.0 + pulse * 2.4;
+  const halo = 5.2 + pulse * 2.2;
   starHalo.scale.set(halo, halo, 1);
 
   /* 灯光呼吸 */
-  baseLight.intensity = 12 + pulse * 9;
-  topLight.intensity = 22 + pulse * 16;
+  baseLight.intensity = 15 + pulse * 12;
+  topLight.intensity = 27 + pulse * 19;
 
   /* 相机缓动 + 视差 */
   const camY = 3.4 + Math.sin(t * 0.16) * 0.55 - pointer.y * 1.6;
@@ -1000,6 +1020,19 @@ function renderFrame() {
 
   /* 手势轮询（约 30fps 足够） */
   if (handLoopOn) tickHand();
+
+  /* 帧率保护：开头几十帧明显吃力，就把分辨率退回 1.5 倍，宁可少一点锐度也不卡 */
+  if (!perfDone && t > 1.5) {
+    perfSum += delta; perfTick++;
+    if (perfTick >= 40) {
+      if (perfSum / perfTick > 0.024 && renderer.getPixelRatio() > 1.5) {
+        renderer.setPixelRatio(1.5);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        treeMat.uniforms.uScale.value = 1.5;
+      }
+      perfDone = true;
+    }
+  }
 
   renderer.render(scene, camera);
 }
