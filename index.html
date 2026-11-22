@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>璀璨圣诞树</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="titleBlock">
+  <div class="kicker" id="kicker">2026 · CHRISTMAS</div>
+  <h1 id="title">璀璨圣诞树</h1>
+  <p id="subtitle">Merry Christmas<br>愿你想见的人，都在光里</p>
+  <div id="signature">— 送给每一个还在等雪的人</div>
+</div>
+
+<aside id="hud">
+  <div class="hudRow">
+    <div id="camWrap">
+      <video id="cam" playsinline muted autoplay></video>
+      <canvas id="camOverlay"></canvas>
+      <div id="camState">CAMERA OFF</div>
+    </div>
+    <div class="hudBtns">
+      <button id="btnHand">开启手势</button>
+      <button id="btnPhotos">添加照片</button>
+      <button id="btnMusic">添加音乐</button>
+    </div>
+  </div>
+  <div id="gestureBadge"><span id="gName">IDLE</span><span id="gHint">未识别到手</span></div>
+  <div class="modes">
+    <button data-gesture="FIST">成树</button>
+    <button data-gesture="OPEN">散开</button>
+    <button data-gesture="PINCH">照片</button>
+  </div>
+  <div id="thumbs"></div>
+</aside>
+
+<input type="file" id="filePhotos" accept="image/*" multiple hidden>
+<input type="file" id="fileMusic" accept="audio/*" hidden>
+
+<div id="tip">握拳成树 · 摊手散开 · 捏指弹照片</div>
+<div id="boot">正在加载手势引擎…</div>
+<div id="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
