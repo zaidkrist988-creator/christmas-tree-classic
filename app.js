@@ -74,7 +74,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#0b2317');
-scene.fog = new THREE.FogExp2('#0a2418', 0.013);
+scene.fog = new THREE.FogExp2('#0b2317', 0.022);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.position.set(0, 3.4, 27);
@@ -93,8 +93,8 @@ scene.add(topLight);
 
 /* 地面 */
 const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(46, 64),
-  new THREE.MeshStandardMaterial({ color: 0x0a1f14, roughness: 0.6, metalness: 0.35 })
+  new THREE.CircleGeometry(170, 96),
+  new THREE.MeshStandardMaterial({ color: 0x0b2317, roughness: 0.9, metalness: 0.05 })
 );
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -CONFIG.tree.height / 2 - 0.9;
